@@ -19,15 +19,22 @@ mock_props = [
 ]
 
 
-# --- Prediction function (last 5 average) ---
-def get_prediction(player, stat):
+# --- Prediction function (weighted last 5) ---
+def get_weighted_prediction(player, stat):
     player_data = df[df["player"] == player]
 
     if player_data.empty:
         return None
 
     last_5 = player_data.tail(5)
-    return round(last_5[stat].mean(), 2)
+
+    values = last_5[stat].tolist()
+    weights = [1, 2, 3, 4, 5]
+
+    weighted_sum = sum(value * weight for value, weight in zip(values, weights))
+    total_weights = sum(weights)
+
+    return round(weighted_sum / total_weights, 2)
 
 
 # --- Main route ---
@@ -40,7 +47,7 @@ def get_props(
     results = []
 
     for prop in mock_props:
-        predicted = get_prediction(prop["player"], prop["stat"])
+        predicted = get_weighted_prediction(prop["player"], prop["stat"])
 
         if predicted is None:
             continue
