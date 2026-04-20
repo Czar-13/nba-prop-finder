@@ -37,6 +37,20 @@ def get_weighted_prediction(player, stat):
     return round(weighted_sum / total_weights, 2)
 
 
+# --- Confidence function (hit rate last 5) ---
+def get_confidence(player, stat, line):
+    player_data = df[df["player"] == player]
+
+    if player_data.empty:
+        return None
+
+    last_5 = player_data.tail(5)
+    hits = (last_5[stat] > line).sum()
+    confidence = (hits / len(last_5)) * 100
+
+    return round(confidence, 2)
+
+
 # --- Main route ---
 @router.get("/")
 def get_props(
@@ -48,6 +62,7 @@ def get_props(
 
     for prop in mock_props:
         predicted = get_weighted_prediction(prop["player"], prop["stat"])
+        confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
 
         if predicted is None:
             continue
@@ -55,6 +70,7 @@ def get_props(
         prop_with_edge = prop.copy()
         prop_with_edge["predicted"] = predicted
         prop_with_edge["edge"] = round(predicted - prop["line"], 2)
+        prop_with_edge["confidence"] = confidence
 
         results.append(prop_with_edge)
 
