@@ -1,13 +1,36 @@
 from fastapi import APIRouter, Query
+import pandas as pd
+import os
 
 router = APIRouter()
 
+# --- Load CSV safely (works with backend.app.main) ---
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # points to backend/app
+csv_path = os.path.join(BASE_DIR, "data", "player_stats.csv")
+
+df = pd.read_csv(csv_path)
+
+
+# --- Mock props (lines from sportsbook) ---
 mock_props = [
-    {"player": "Jayson Tatum", "stat": "Points", "line": 27.5, "odds": -110, "predicted": 30.0},
-    {"player": "Nikola Jokic", "stat": "Rebounds", "line": 11.5, "odds": -105, "predicted": 13.0},
-    {"player": "Stephen Curry", "stat": "3PT", "line": 4.5, "odds": 120, "predicted": 4.0},
+    {"player": "Jayson Tatum", "stat": "points", "line": 27.5, "odds": -110},
+    {"player": "Nikola Jokic", "stat": "rebounds", "line": 11.5, "odds": -105},
+    {"player": "Stephen Curry", "stat": "threes", "line": 4.5, "odds": 120},
 ]
 
+
+# --- Prediction function (last 5 average) ---
+def get_prediction(player, stat):
+    player_data = df[df["player"] == player]
+
+    if player_data.empty:
+        return None
+
+    last_5 = player_data.tail(5)
+    return round(last_5[stat].mean(), 2)
+
+
+# --- Main route ---
 @router.get("/")
 def get_props(
     player: str = Query(None),
@@ -17,10 +40,18 @@ def get_props(
     results = []
 
     for prop in mock_props:
+        predicted = get_prediction(prop["player"], prop["stat"])
+
+        if predicted is None:
+            continue
+
         prop_with_edge = prop.copy()
-        prop_with_edge["edge"] = round(prop_with_edge["predicted"] - prop_with_edge["line"], 2)
+        prop_with_edge["predicted"] = predicted
+        prop_with_edge["edge"] = round(predicted - prop["line"], 2)
+
         results.append(prop_with_edge)
 
+    # --- Filters ---
     if player:
         results = [p for p in results if player.lower() in p["player"].lower()]
 
@@ -30,6 +61,7 @@ def get_props(
     if min_edge is not None:
         results = [p for p in results if p["edge"] >= min_edge]
 
+    # --- Sort best → worst ---
     results = sorted(results, key=lambda p: p["edge"], reverse=True)
 
     return {"props": results}
