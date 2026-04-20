@@ -10,8 +10,8 @@ def root():
 def health():
     return {"status": "ok"}
 
-@app.get("/ranked-props")
-def ranked_props():
+@app.get("/props")
+def props():
     return [
         {
             "player": "Jalen Brunson",
