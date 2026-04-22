@@ -36,6 +36,15 @@ def get_weighted_prediction(player, stat):
 
     return round(weighted_sum / total_weights, 2)
 
+# --- Season Average function ---
+def get_season_average(player, stat):
+    player_data = df[df["player"] == player]
+
+    if player_data.empty:
+        return None
+
+    return round(player_data[stat].mean(), 2)
+
 
 # --- Confidence function (hit rate last 5) ---
 def get_confidence(player, stat, line):
@@ -61,11 +70,14 @@ def get_props(
     results = []
 
     for prop in mock_props:
-        predicted = get_weighted_prediction(prop["player"], prop["stat"])
-        confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
+        weighted_last_5 = get_weighted_prediction(prop["player"], prop["stat"])
+        season_avg = get_season_average(prop["player"], prop["stat"])
 
-        if predicted is None:
+        if weighted_last_5 is None or season_avg is None:
             continue
+
+        predicted = round((weighted_last_5 * 0.7) + (season_avg * 0.3), 2)
+        confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
 
         prop_with_edge = prop.copy()
         prop_with_edge["predicted"] = predicted
