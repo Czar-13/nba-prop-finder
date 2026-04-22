@@ -47,16 +47,20 @@ def get_season_average(player, stat):
 
 
 # --- Confidence function (hit rate last 5) ---
-def get_confidence(player, stat, line):
+def get_confidence(player, stat, line, predicted):
     player_data = df[df["player"] == player]
 
     if player_data.empty:
         return None
 
     last_5 = player_data.tail(5)
-    hits = (last_5[stat] > line).sum()
-    confidence = (hits / len(last_5)) * 100
 
+    if predicted >= line:
+        hits = (last_5[stat] > line).sum()
+    else:
+        hits = (last_5[stat] < line).sum()
+
+    confidence = (hits / len(last_5)) * 100
     return round(confidence, 2)
 
 # --- Props Helper function ---
@@ -100,7 +104,7 @@ def get_props(
             continue
 
         predicted = round((weighted_last_5 * 0.7) + (season_avg * 0.3), 2)
-        confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
+        confidence = get_confidence(prop["player"], prop["stat"], prop["line"], predicted)
         edge = round(predicted - prop["line"], 2)
         recommendation, best_play = get_recommendation(predicted, prop["line"], confidence)
 
