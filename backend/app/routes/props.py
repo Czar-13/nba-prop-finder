@@ -86,14 +86,8 @@ def get_recommendation(predicted, line, confidence):
     else:
         return "PASS", False
 
-
-# --- Main route ---
-@router.get("/")
-def get_props(
-    player: str = Query(None),
-    stat: str = Query(None),
-    min_edge: float = Query(None)
-):
+# --- Prop Results ---
+def build_prop_results():
     results = []
 
     for prop in mock_props:
@@ -110,14 +104,25 @@ def get_props(
 
         prop_with_edge = prop.copy()
         prop_with_edge["predicted"] = predicted
-        prop_with_edge["edge"] = round(predicted - prop["line"], 2)
+        prop_with_edge["edge"] = edge
         prop_with_edge["confidence"] = confidence
         prop_with_edge["recommendation"] = recommendation
         prop_with_edge["best_play"] = best_play
 
         results.append(prop_with_edge)
+    
+    results = sorted(results, key=lambda p: p["edge"], reverse=True)
+    return results
 
-    # --- Filters ---
+# --- Main route ---
+@router.get("/")
+def get_props(
+    player: str = Query(None),
+    stat: str = Query(None),
+    min_edge: float = Query(None)
+):
+    results = build_prop_results()
+
     if player:
         results = [p for p in results if player.lower() in p["player"].lower()]
 
@@ -125,9 +130,14 @@ def get_props(
         results = [p for p in results if stat.lower() in p["stat"].lower()]
 
     if min_edge is not None:
-        results = [p for p in results if p["edge"] >= min_edge]
-
-    # --- Sort best → worst ---
-    results = sorted(results, key=lambda p: p["edge"], reverse=True)
+        results = [p for p in results if abs(p["edge"]) >= min_edge]
 
     return {"props": results}
+
+@router.get("/top")
+def get_top_props():
+    results = build_prop_results()
+    top_results = [p for p in results if p["best_play"]]
+
+    return {"top_props": top_results}
+
