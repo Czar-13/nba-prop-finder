@@ -59,6 +59,17 @@ def get_confidence(player, stat, line):
 
     return round(confidence, 2)
 
+# --- Props Helper function ---
+def get_recommendation(edge, confidence):
+    if edge >= 2.0 and confidence >= 85:
+        return "NUKE", True
+    elif edge >= 1.5 and confidence >= 80:
+        return "OVER", True
+    elif edge >= 1.0 and confidence >= 60:
+        return "LEAN OVER", False
+    else:
+        return "PASS", False
+
 
 # --- Main route ---
 @router.get("/")
@@ -78,11 +89,15 @@ def get_props(
 
         predicted = round((weighted_last_5 * 0.7) + (season_avg * 0.3), 2)
         confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
+        edge = round(predicted - prop["line"], 2)
+        recommendation, best_play = get_recommendation(edge, confidence)
 
         prop_with_edge = prop.copy()
         prop_with_edge["predicted"] = predicted
         prop_with_edge["edge"] = round(predicted - prop["line"], 2)
         prop_with_edge["confidence"] = confidence
+        prop_with_edge["recommendation"] = recommendation
+        prop_with_edge["best_play"] = best_play
 
         results.append(prop_with_edge)
 
