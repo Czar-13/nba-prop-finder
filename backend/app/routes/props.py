@@ -15,7 +15,7 @@ df = pd.read_csv(csv_path)
 mock_props = [
     {"player": "Jayson Tatum", "stat": "points", "line": 27.5, "odds": -110},
     {"player": "Nikola Jokic", "stat": "rebounds", "line": 11.5, "odds": -105},
-    {"player": "Stephen Curry", "stat": "threes", "line": 4.5, "odds": 120},
+    {"player": "Stephen Curry", "stat": "threes", "line": 7.0, "odds": 120},
 ]
 
 
@@ -60,13 +60,25 @@ def get_confidence(player, stat, line):
     return round(confidence, 2)
 
 # --- Props Helper function ---
-def get_recommendation(edge, confidence):
+def get_recommendation(predicted, line, confidence):
+    edge = predicted - line
+
+    # OVER Lines
     if edge >= 2.0 and confidence >= 85:
-        return "NUKE", True
+        return "NUKE OVER", True
     elif edge >= 1.5 and confidence >= 80:
         return "OVER", True
     elif edge >= 1.0 and confidence >= 60:
         return "LEAN OVER", False
+
+    # UNDER Lines
+    elif edge <= -2.0 and confidence >= 85:
+        return "NUKE UNDER", True
+    elif edge <= -1.5 and confidence >= 80:
+        return "UNDER", True
+    elif edge <= -1.0 and confidence >= 60:
+        return "LEAN UNDER", False
+
     else:
         return "PASS", False
 
@@ -90,7 +102,7 @@ def get_props(
         predicted = round((weighted_last_5 * 0.7) + (season_avg * 0.3), 2)
         confidence = get_confidence(prop["player"], prop["stat"], prop["line"])
         edge = round(predicted - prop["line"], 2)
-        recommendation, best_play = get_recommendation(edge, confidence)
+        recommendation, best_play = get_recommendation(predicted, prop["line"], confidence)
 
         prop_with_edge = prop.copy()
         prop_with_edge["predicted"] = predicted
