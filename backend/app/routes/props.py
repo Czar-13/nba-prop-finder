@@ -154,7 +154,9 @@ def build_prop_results():
 def get_props(
     player: str = Query(None),
     stat: str = Query(None),
-    min_edge: float = Query(None)
+    min_edge: float = Query(None),
+    recommendation: str = Query(None),
+    limit: int = Query(None)
 ):
     results = build_prop_results()
 
@@ -167,12 +169,21 @@ def get_props(
     if min_edge is not None:
         results = [p for p in results if abs(p["edge"]) >= min_edge]
 
+    if recommendation:
+        results = [p for p in results if p["recommendation"].lower() == recommendation.lower()]
+
+    if limit is not None:
+        results = results[:limit]
+
     return {"props": results}
 
 @router.get("/top")
-def get_top_props():
+def get_top_props(limit: int = Query(None)):
     results = build_prop_results()
     top_results = [p for p in results if p["best_play"]]
+
+    if limit is not None:
+        top_results = top_results[:limit]
 
     return {"top_props": top_results}
 
