@@ -63,6 +63,24 @@ def get_confidence(player, stat, line, predicted):
     confidence = (hits / len(last_5)) * 100
     return round(confidence, 2)
 
+# --- Risk Assessment function ---
+def get_risk_level(player, stat):
+    player_data = df[df["player"] == player]
+
+    if player_data.empty:
+        return None
+    
+    last_5 = player_data.tail(5)
+    stat_range = last_5[stat].max() - last_5[stat].min()
+
+    if stat_range <= 2:
+        return "LOW"
+    elif stat_range <= 5:
+        return "MEDIUM"
+    else:
+        return "HIGH"
+    
+
 # --- Props Helper function ---
 def get_recommendation(predicted, line, confidence):
     edge = predicted - line
@@ -99,6 +117,7 @@ def build_prop_results():
 
         predicted = round((weighted_last_5 * 0.7) + (season_avg * 0.3), 2)
         confidence = get_confidence(prop["player"], prop["stat"], prop["line"], predicted)
+        risk_level = get_risk_level(prop["player"], prop["stat"])
         edge = round(predicted - prop["line"], 2)
         recommendation, best_play = get_recommendation(predicted, prop["line"], confidence)
 
@@ -106,9 +125,10 @@ def build_prop_results():
         prop_with_edge["predicted"] = predicted
         prop_with_edge["edge"] = edge
         prop_with_edge["confidence"] = confidence
+        prop_with_edge["risk_level"] = risk_level
         prop_with_edge["recommendation"] = recommendation
         prop_with_edge["best_play"] = best_play
-
+    
         results.append(prop_with_edge)
     
     results = sorted(results, key=lambda p: abs(p["edge"]), reverse=True)
