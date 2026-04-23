@@ -111,7 +111,7 @@ def build_prop_results():
 
         results.append(prop_with_edge)
     
-    results = sorted(results, key=lambda p: p["edge"], reverse=True)
+    results = sorted(results, key=lambda p: abs(p["edge"]), reverse=True)
     return results
 
 # --- Main route ---
