@@ -90,3 +90,61 @@ tr:hover {
   border-radius: 10px;
   margin-bottom: 20px;
 }
+
+.best-card {
+  background: linear-gradient(135deg, #1f2937, #111827);
+  border: 1px solid #374151;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.subheader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background-color: #22c55e;
+  display: inline-block;
+}
+
+.edge-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  min-width: 56px;
+  text-align: center;
+}
+
+.edge-high {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.edge-medium {
+  background-color: rgba(234, 179, 8, 0.2);
+  color: #eab308;
+}
+
+.edge-low {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+
+.best-play-row {
+  background: linear-gradient(90deg, rgba(34,197,94,0.15), transparent);
+}
+
+.active-btn {
+  background-color: #22c55e;
+  color: white;
+}
