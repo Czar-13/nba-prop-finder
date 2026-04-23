@@ -187,3 +187,13 @@ def get_top_props(limit: int = Query(None)):
 
     return {"top_props": top_results}
 
+@router.get("/best")
+def get_best_prop():
+    results = build_prop_results()
+
+    if not results:
+        return {"best_prop": None}
+
+    best = results[0]
+
+    return {"best_prop": best}
