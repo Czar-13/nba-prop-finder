@@ -1,17 +1,168 @@
 from fastapi import APIRouter, Query
 import pandas as pd
 import os
+import requests
 
 router = APIRouter()
 
-# --- Load CSV safely (works with backend.app.main) ---
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # points to backend/app
+# --- Load CSV safely ---
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 csv_path = os.path.join(BASE_DIR, "data", "player_stats.csv")
 
 df = pd.read_csv(csv_path)
 
+team_totals_path = os.path.join(BASE_DIR, "data", "team_totals.csv")
+team_df = pd.read_csv(team_totals_path)
 
-# --- Mock props (lines from sportsbook) ---
+# --- Odds API ---
+ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+
+def get_nba_odds():
+    if not ODDS_API_KEY:
+        return {"error": "API key not set"}
+
+    url = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds/"
+    params = {
+        "apiKey": ODDS_API_KEY,
+        "regions": "us",
+        "markets": "spreads,totals",
+        "oddsFormat": "american",
+    }
+
+    response = requests.get(url, params=params, timeout=15)
+
+    if response.status_code != 200:
+        return {
+            "error": response.status_code,
+            "message": response.text
+        }
+
+    return response.json()
+
+
+def clean_nba_odds():
+    raw_data = get_nba_odds()
+
+    if isinstance(raw_data, dict) and raw_data.get("error"):
+        return raw_data
+
+    cleaned = []
+
+    for game in raw_data:
+        game_id = game.get("id")
+        home_team = game.get("home_team")
+        away_team = game.get("away_team")
+        commence_time = game.get("commence_time")
+        bookmakers = game.get("bookmakers", [])
+
+        for bookmaker in bookmakers:
+            bookmaker_name = bookmaker.get("title")
+            markets = bookmaker.get("markets", [])
+
+            spread_data = None
+            total_data = None
+
+            for market in markets:
+                if market.get("key") == "spreads":
+                    outcomes = market.get("outcomes", [])
+                    spread_data = {
+                        "home": next((o for o in outcomes if o.get("name") == home_team), None),
+                        "away": next((o for o in outcomes if o.get("name") == away_team), None),
+                    }
+
+                elif market.get("key") == "totals":
+                    outcomes = market.get("outcomes", [])
+                    total_data = {
+                        "over": next((o for o in outcomes if o.get("name") == "Over"), None),
+                        "under": next((o for o in outcomes if o.get("name") == "Under"), None),
+                    }
+
+            cleaned.append({
+                "id": game_id,
+                "matchup": f"{away_team} @ {home_team}",
+                "home_team": home_team,
+                "away_team": away_team,
+                "commence_time": commence_time,
+                "bookmaker": bookmaker_name,
+                "spread": {
+                    "home_point": spread_data["home"]["point"] if spread_data and spread_data["home"] else None,
+                    "home_price": spread_data["home"]["price"] if spread_data and spread_data["home"] else None,
+                    "away_point": spread_data["away"]["point"] if spread_data and spread_data["away"] else None,
+                    "away_price": spread_data["away"]["price"] if spread_data and spread_data["away"] else None,
+                },
+                "total": {
+                    "point": total_data["over"]["point"] if total_data and total_data["over"] else None,
+                    "over_price": total_data["over"]["price"] if total_data and total_data["over"] else None,
+                    "under_price": total_data["under"]["price"] if total_data and total_data["under"] else None,
+                }
+            })
+
+    return cleaned
+
+def build_totals_results():
+    odds_data = clean_nba_odds()
+
+    if isinstance(odds_data, dict) and odds_data.get("error"):
+        return odds_data
+
+    best_lines = {}
+
+    for game in odds_data:
+        total_info = game.get("total", {})
+        total_line = total_info.get("point")
+
+        if total_line is None:
+            continue
+
+        home_team = game.get("home_team")
+        away_team = game.get("away_team")
+
+        predicted_total = get_predicted_game_total(home_team, away_team)
+
+        if predicted_total is None:
+            continue
+
+        edge = round(predicted_total - total_line, 2)
+        recommendation, best_play = get_total_recommendation(predicted_total, total_line)
+
+        game_result = {
+            "matchup": game.get("matchup"),
+            "bookmaker": game.get("bookmaker"),
+            "commence_time": game.get("commence_time"),
+            "line": total_line,
+            "predicted_total": predicted_total,
+            "edge": edge,
+            "recommendation": recommendation,
+            "best_play": best_play
+        }
+
+        matchup_key = game.get("matchup")
+        existing = best_lines.get(matchup_key)
+
+        if existing is None:
+            best_lines[matchup_key] = game_result
+            continue
+
+        # If current recommendation is OVER, lower line is better
+        if recommendation in ["OVER", "LEAN OVER", "NUKE OVER"]:
+            if total_line < existing["line"]:
+                best_lines[matchup_key] = game_result
+
+        # If current recommendation is UNDER, higher line is better
+        elif recommendation in ["UNDER", "LEAN UNDER", "NUKE UNDER"]:
+            if total_line > existing["line"]:
+                best_lines[matchup_key] = game_result
+
+        # If PASS, keep the stronger absolute edge
+        else:
+            if abs(edge) > abs(existing["edge"]):
+                best_lines[matchup_key] = game_result
+
+    results = list(best_lines.values())
+    results = sorted(results, key=lambda x: abs(x["edge"]), reverse=True)
+    return results
+
+# --- Mock props ---
 mock_props = [
     {"player": "Jayson Tatum", "stat": "points", "line": 27.5, "odds": -110},
     {"player": "Nikola Jokic", "stat": "rebounds", "line": 11.5, "odds": -105},
@@ -19,7 +170,7 @@ mock_props = [
 ]
 
 
-# --- Prediction function (weighted last 5) ---
+# --- Prediction function ---
 def get_weighted_prediction(player, stat):
     player_data = df[df["player"] == player]
 
@@ -36,7 +187,8 @@ def get_weighted_prediction(player, stat):
 
     return round(weighted_sum / total_weights, 2)
 
-# --- Season Average function ---
+
+# --- Season Average ---
 def get_season_average(player, stat):
     player_data = df[df["player"] == player]
 
@@ -46,7 +198,7 @@ def get_season_average(player, stat):
     return round(player_data[stat].mean(), 2)
 
 
-# --- Confidence function (hit rate last 5) ---
+# --- Confidence ---
 def get_confidence(player, stat, line, predicted):
     player_data = df[df["player"] == player]
 
@@ -63,7 +215,8 @@ def get_confidence(player, stat, line, predicted):
     confidence = (hits / len(last_5)) * 100
     return round(confidence, 2)
 
-# --- Risk Assessment function ---
+
+# --- Risk ---
 def get_risk_level(player, stat):
     player_data = df[df["player"] == player]
 
@@ -80,13 +233,14 @@ def get_risk_level(player, stat):
     else:
         return "HIGH"
 
-# --- Scoring helper function ---   
+
+# --- Score ---
 def get_score(edge, confidence, risk_level):
     risk_penalties = {
         "LOW": 0,
         "MEDIUM": 5,
         "HIGH": 10
-    }  
+    }
 
     penalty = risk_penalties.get(risk_level, 0)
     score = (abs(edge) * 10) + confidence - penalty
@@ -94,30 +248,27 @@ def get_score(edge, confidence, risk_level):
     return round(score, 2)
 
 
-# --- Props Helper function ---
+# --- Recommendation ---
 def get_recommendation(predicted, line, confidence):
     edge = predicted - line
 
-    # OVER Lines
     if edge >= 2.0 and confidence >= 85:
         return "NUKE OVER", True
     elif edge >= 1.5 and confidence >= 80:
         return "OVER", True
     elif edge >= 1.0 and confidence >= 60:
         return "LEAN OVER", False
-
-    # UNDER Lines
     elif edge <= -2.0 and confidence >= 85:
         return "NUKE UNDER", True
     elif edge <= -1.5 and confidence >= 80:
         return "UNDER", True
     elif edge <= -1.0 and confidence >= 60:
         return "LEAN UNDER", False
-
     else:
         return "PASS", False
 
-# --- Prop Results ---
+
+# --- Build Results ---
 def build_prop_results():
     results = []
 
@@ -143,13 +294,69 @@ def build_prop_results():
         prop_with_edge["score"] = score
         prop_with_edge["recommendation"] = recommendation
         prop_with_edge["best_play"] = best_play
-    
+
         results.append(prop_with_edge)
-    
+
     results = sorted(results, key=lambda p: p["score"], reverse=True)
     return results
 
-# --- Main route ---
+def get_team_weighted_points(team):
+    team_data = team_df[team_df["team"] == team]
+
+    if team_data.empty:
+        return None
+
+    last_5 = team_data.tail(5)
+    values = last_5["points"].tolist()
+    weights = [1, 2, 3, 4, 5]
+
+    weighted_sum = sum(value * weight for value, weight in zip(values, weights))
+    total_weights = sum(weights)
+
+    return round(weighted_sum / total_weights, 2)
+
+
+def get_team_season_average(team):
+    team_data = team_df[team_df["team"] == team]
+
+    if team_data.empty:
+        return None
+
+    return round(team_data["points"].mean(), 2)
+
+
+def get_predicted_game_total(home_team, away_team):
+    home_last5 = get_team_weighted_points(home_team)
+    away_last5 = get_team_weighted_points(away_team)
+
+    home_avg = get_team_season_average(home_team)
+    away_avg = get_team_season_average(away_team)
+
+    if None in [home_last5, away_last5, home_avg, away_avg]:
+        return None
+
+    home_pred = (home_last5 * 0.7) + (home_avg * 0.3)
+    away_pred = (away_last5 * 0.7) + (away_avg * 0.3)
+
+    return round(home_pred + away_pred, 2)
+
+
+def get_total_recommendation(predicted_total, line):
+    edge = round(predicted_total - line, 2)
+
+    if edge >= 5:
+        return "OVER", True
+    elif edge >= 2:
+        return "LEAN OVER", False
+    elif edge <= -5:
+        return "UNDER", True
+    elif edge <= -2:
+        return "LEAN UNDER", False
+    else:
+        return "PASS", False
+
+# --- ROUTES ---
+
 @router.get("/")
 def get_props(
     player: str = Query(None),
@@ -177,6 +384,7 @@ def get_props(
 
     return {"props": results}
 
+
 @router.get("/top")
 def get_top_props(limit: int = Query(None)):
     results = build_prop_results()
@@ -187,6 +395,7 @@ def get_top_props(limit: int = Query(None)):
 
     return {"top_props": top_results}
 
+
 @router.get("/best")
 def get_best_prop():
     results = build_prop_results()
@@ -194,6 +403,28 @@ def get_best_prop():
     if not results:
         return {"best_prop": None}
 
-    best = results[0]
+    return {"best_prop": results[0]}
 
-    return {"best_prop": best}
+
+@router.get("/odds/raw")
+def get_odds_raw():
+    odds_data = get_nba_odds()
+    return {"odds": odds_data}
+
+
+@router.get("/odds")
+def get_odds():
+    odds_data = clean_nba_odds()
+    return {"odds": odds_data}
+
+@router.get("/totals")
+def get_totals(limit: int = Query(None)):
+    results = build_totals_results()
+
+    if isinstance(results, dict) and results.get("error"):
+        return results
+
+    if limit is not None:
+        results = results[:limit]
+
+    return {"totals": results}

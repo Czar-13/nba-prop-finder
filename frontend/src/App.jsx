@@ -16,6 +16,7 @@ export default function App() {
   const [recommendationFilter, setRecommendationFilter] = useState("");
   const [bestOnly, setBestOnly] = useState(false);
   const [limit, setLimit] = useState("");
+  const [sortBy, setSortBy] = useState("score");
 
   useEffect(() => {
     setLoading(true);
@@ -53,6 +54,10 @@ export default function App() {
         setLoading(false);
       });
   }, [recommendationFilter, bestOnly, limit]);
+
+  const sortedData = [...propsData].sort((a, b) => {
+    return b[sortBy] - a[sortBy];
+  });
 
   return (
     <div className="container">
@@ -92,6 +97,30 @@ export default function App() {
         </label>
       </div>
 
+      <div className="controls">
+        <button onClick={() => setSortBy("score")}>Sort by Score</button>
+        <button onClick={() => setSortBy("edge")}>Sort by Edge</button>
+        <button onClick={() => setSortBy("confidence")}>Sort by Confidence</button>
+      </div>
+
+      {!loading && sortedData.length > 0 && (
+        <div className="best-card">
+          <h2>Best Bet</h2>
+          <p>
+            {sortedData[0].player} — {sortedData[0].stat}
+          </p>
+          <p>
+            Line: {sortedData[0].line} | Predicted: {sortedData[0].predicted}
+          </p>
+          <p>
+            Edge: {sortedData[0].edge} | Score: {sortedData[0].score}
+          </p>
+          <p className={getRecommendationClass(sortedData[0].recommendation)}>
+            {sortedData[0].recommendation}
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <p>Loading props...</p>
       ) : (
@@ -111,7 +140,7 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {propsData.map((prop, index) => (
+            {sortedData.map((prop, index) => (
               <tr key={index} className={prop.best_play ? "best-play-row" : ""}>
                 <td>{prop.player}</td>
                 <td>{prop.stat}</td>
