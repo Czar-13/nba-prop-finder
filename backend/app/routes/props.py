@@ -79,7 +79,20 @@ def get_risk_level(player, stat):
         return "MEDIUM"
     else:
         return "HIGH"
-    
+
+# --- Scoring helper function ---   
+def get_score(edge, confidence, risk_level):
+    risk_penalties = {
+        "LOW": 0,
+        "MEDIUM": 5,
+        "HIGH": 10
+    }  
+
+    penalty = risk_penalties.get(risk_level, 0)
+    score = (abs(edge) * 10) + confidence - penalty
+
+    return round(score, 2)
+
 
 # --- Props Helper function ---
 def get_recommendation(predicted, line, confidence):
@@ -119,6 +132,7 @@ def build_prop_results():
         confidence = get_confidence(prop["player"], prop["stat"], prop["line"], predicted)
         risk_level = get_risk_level(prop["player"], prop["stat"])
         edge = round(predicted - prop["line"], 2)
+        score = get_score(edge, confidence, risk_level)
         recommendation, best_play = get_recommendation(predicted, prop["line"], confidence)
 
         prop_with_edge = prop.copy()
@@ -126,12 +140,13 @@ def build_prop_results():
         prop_with_edge["edge"] = edge
         prop_with_edge["confidence"] = confidence
         prop_with_edge["risk_level"] = risk_level
+        prop_with_edge["score"] = score
         prop_with_edge["recommendation"] = recommendation
         prop_with_edge["best_play"] = best_play
     
         results.append(prop_with_edge)
     
-    results = sorted(results, key=lambda p: abs(p["edge"]), reverse=True)
+    results = sorted(results, key=lambda p: p["score"], reverse=True)
     return results
 
 # --- Main route ---
