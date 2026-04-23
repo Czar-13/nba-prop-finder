@@ -82,3 +82,11 @@ tr:hover {
   align-items: center;
   gap: 8px;
 }
+
+.best-card {
+  background: linear-gradient(135deg, #1f2937, #111827);
+  border: 1px solid #374151;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}

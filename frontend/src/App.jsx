@@ -17,19 +17,22 @@ export default function App() {
   const [bestOnly, setBestOnly] = useState(false);
   const [limit, setLimit] = useState("");
   const [sortBy, setSortBy] = useState("score");
+  const [viewMode, setViewMode] = useState("props");
 
   useEffect(() => {
     setLoading(true);
 
     let url = "http://127.0.0.1:8000/props";
 
-    if (bestOnly) {
+    if (viewMode === "totals") {
+      url = "http://127.0.0.1:8000/props/totals";
+    } else if (bestOnly) {
       url = "http://127.0.0.1:8000/props/top";
     }
 
     const params = new URLSearchParams();
 
-    if (recommendationFilter && !bestOnly) {
+    if (recommendationFilter && !bestOnly && viewMode === "props") {
       params.append("recommendation", recommendationFilter);
     }
 
@@ -42,7 +45,9 @@ export default function App() {
     fetch(finalUrl)
       .then((res) => res.json())
       .then((data) => {
-        if (bestOnly) {
+        if (viewMode === "totals") {
+          setPropsData(data.totals || []);
+        } else if (bestOnly) {
           setPropsData(data.top_props || []);
         } else {
           setPropsData(data.props || []);
@@ -50,13 +55,17 @@ export default function App() {
         setLoading(false);
       })
       .catch((error) => {
-        console.error("Error fetching props:", error);
+        console.error("Error fetching data:", error);
         setLoading(false);
       });
-  }, [recommendationFilter, bestOnly, limit]);
+  }, [recommendationFilter, bestOnly, limit, viewMode]);
 
   const sortedData = [...propsData].sort((a, b) => {
-    return b[sortBy] - a[sortBy];
+    if (viewMode === "totals") {
+      if (sortBy === "edge") return Math.abs(b.edge) - Math.abs(a.edge);
+      return Math.abs(b.edge) - Math.abs(a.edge);
+    }
+    return (b[sortBy] ?? 0) - (a[sortBy] ?? 0);
   });
 
   return (
@@ -64,48 +73,75 @@ export default function App() {
       <h1>NBA Props Dashboard</h1>
 
       <div className="controls">
-        <select
-          value={recommendationFilter}
-          onChange={(e) => setRecommendationFilter(e.target.value)}
-          disabled={bestOnly}
-        >
-          <option value="">All Recommendations</option>
-          <option value="OVER">OVER</option>
-          <option value="LEAN OVER">LEAN OVER</option>
-          <option value="UNDER">UNDER</option>
-          <option value="LEAN UNDER">LEAN UNDER</option>
-          <option value="PASS">PASS</option>
-          <option value="NUKE OVER">NUKE OVER</option>
-          <option value="NUKE UNDER">NUKE UNDER</option>
-        </select>
+        <button onClick={() => setViewMode("props")}>Player Props</button>
+        <button onClick={() => setViewMode("totals")}>Game Totals</button>
+      </div>
 
-        <input
-          type="number"
-          min="1"
-          placeholder="Limit results"
-          value={limit}
-          onChange={(e) => setLimit(e.target.value)}
-        />
+      {viewMode === "props" && (
+        <div className="controls">
+          <select
+            value={recommendationFilter}
+            onChange={(e) => setRecommendationFilter(e.target.value)}
+            disabled={bestOnly}
+          >
+            <option value="">All Recommendations</option>
+            <option value="OVER">OVER</option>
+            <option value="LEAN OVER">LEAN OVER</option>
+            <option value="UNDER">UNDER</option>
+            <option value="LEAN UNDER">LEAN UNDER</option>
+            <option value="PASS">PASS</option>
+            <option value="NUKE OVER">NUKE OVER</option>
+            <option value="NUKE UNDER">NUKE UNDER</option>
+          </select>
 
-        <label className="checkbox-label">
           <input
-            type="checkbox"
-            checked={bestOnly}
-            onChange={(e) => setBestOnly(e.target.checked)}
+            type="number"
+            min="1"
+            placeholder="Limit results"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
           />
-          Best Plays Only
-        </label>
-      </div>
 
-      <div className="controls">
-        <button onClick={() => setSortBy("score")}>Sort by Score</button>
-        <button onClick={() => setSortBy("edge")}>Sort by Edge</button>
-        <button onClick={() => setSortBy("confidence")}>Sort by Confidence</button>
-      </div>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={bestOnly}
+              onChange={(e) => setBestOnly(e.target.checked)}
+            />
+            Best Plays Only
+          </label>
+        </div>
+      )}
 
-      {!loading && sortedData.length > 0 && (
+      {viewMode === "totals" && (
+        <div className="controls">
+          <input
+            type="number"
+            min="1"
+            placeholder="Limit results"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+          />
+        </div>
+      )}
+
+      {viewMode === "props" && (
+        <div className="controls">
+          <button onClick={() => setSortBy("score")}>Sort by Score</button>
+          <button onClick={() => setSortBy("edge")}>Sort by Edge</button>
+          <button onClick={() => setSortBy("confidence")}>Sort by Confidence</button>
+        </div>
+      )}
+
+      {viewMode === "totals" && (
+        <div className="controls">
+          <button onClick={() => setSortBy("edge")}>Sort by Edge</button>
+        </div>
+      )}
+
+      {!loading && sortedData.length > 0 && viewMode === "props" && (
         <div className="best-card">
-          <h2>Best Bet</h2>
+          <h2>🔥 Best Bet</h2>
           <p>
             {sortedData[0].player} — {sortedData[0].stat}
           </p>
@@ -121,9 +157,25 @@ export default function App() {
         </div>
       )}
 
+      {!loading && sortedData.length > 0 && viewMode === "totals" && (
+        <div className="best-card">
+          <h2>🔥 Best Total</h2>
+          <p>{sortedData[0].matchup}</p>
+          <p>
+            Book: {sortedData[0].bookmaker} | Line: {sortedData[0].line}
+          </p>
+          <p>
+            Predicted: {sortedData[0].predicted_total} | Edge: {sortedData[0].edge}
+          </p>
+          <p className={getRecommendationClass(sortedData[0].recommendation)}>
+            {sortedData[0].recommendation}
+          </p>
+        </div>
+      )}
+
       {loading ? (
-        <p>Loading props...</p>
-      ) : (
+        <p>Loading data...</p>
+      ) : viewMode === "props" ? (
         <table>
           <thead>
             <tr>
@@ -154,6 +206,37 @@ export default function App() {
                   {prop.recommendation}
                 </td>
                 <td>{prop.best_play ? "Yes" : "No"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Matchup</th>
+              <th>Bookmaker</th>
+              <th>Time</th>
+              <th>Line</th>
+              <th>Predicted Total</th>
+              <th>Edge</th>
+              <th>Recommendation</th>
+              <th>Best Play</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedData.map((game, index) => (
+              <tr key={index} className={game.best_play ? "best-play-row" : ""}>
+                <td>{game.matchup}</td>
+                <td>{game.bookmaker}</td>
+                <td>{game.commence_time}</td>
+                <td>{game.line}</td>
+                <td>{game.predicted_total}</td>
+                <td>{game.edge}</td>
+                <td className={getRecommendationClass(game.recommendation)}>
+                  {game.recommendation}
+                </td>
+                <td>{game.best_play ? "Yes" : "No"}</td>
               </tr>
             ))}
           </tbody>
